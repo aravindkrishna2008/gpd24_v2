@@ -1,11 +1,13 @@
 import cv2
 import numpy as np
+import time
+import math
+
 
 def filterImage(noteName, dot):
-    # Load the image
-    image_og = cv2.imread(f'notes/{noteName}.{dot}')
     image = cv2.imread(f'notes/{noteName}.{dot}')
-
+    image_og = image.copy()
+    image_og_2 = image.copy()
 
     scale_percent = 100
     width = int(image.shape[1] * scale_percent / 100)
@@ -14,66 +16,75 @@ def filterImage(noteName, dot):
     image = cv2.resize(image, dim, interpolation = cv2.INTER_AREA)
     image_og = cv2.resize(image_og, dim, interpolation = cv2.INTER_AREA)
 
-    # filter by color
-    # image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     lower = np.array([29, 30, 210]) # FIXME: tune for different cameras
     upper = np.array([150,100,256])  # FIXME: tune for different cameras
     mask = cv2.inRange(image, lower, upper)
     result = cv2.bitwise_and(image, image, mask=mask)
-    cv2.imwrite(f'{noteName}_filtered.jpeg', result)
 
-    # convert to hsv
     result = cv2.cvtColor(result, cv2.COLOR_BGR2HSV)
-    cv2.imwrite(f'{noteName}_filtered.jpeg', result)
 
     grouping = [
+        # dummy value to make sure that there is no null pointer exception
         [[0,0], [[0,0]]]
     ]
 
-    kValue = 40
-    # list out all hsv values of the filtered part of the image not the blakc ones
-    for i in range(result.shape[0]):
-        for j in range(result.shape[1]):
-            if result[i][j][0] != 0:
-                if len(grouping) == 0 and (grouping[-1][0][0] - i < kValue and grouping[-1][0][0] - i > -kValue) or (grouping[-1][0][1] - j < kValue and grouping[-1][0][1] - j > -kValue):
-                    grouping[-1][1].append([i,j])
-                else:
-                    grouping.append([[i,j], [[i,j]]])
+    non_zero_pixels = np.transpose(np.nonzero(result[:,:,0]))
+
+    kValue = 10
+    for pixel in non_zero_pixels:
+        i, j = pixel
+        if len(grouping) == 0 or not ((np.abs(grouping[-1][0][0] - i) < kValue) or (np.abs(grouping[-1][0][1] - j) < kValue)):
+            grouping.append([pixel, [pixel.tolist()]])
+        else:
+            grouping[-1][1].append(pixel.tolist())
     
-    for i in range(1,len(grouping)):
-        maxXLeft = 100000
-        maxXRight = 0
-        maxYTop = 100000
-        maxYBottom = 0
+    upper = np.array([100,100,256])  # FIXME: tune for different cameras, should be good for the ultrawdie one
+    lower = np.array([0, 0, 100]) # FIXME: tune for different cameras, should be good for the ultrawdie one
+    mask = cv2.inRange(image, lower, upper)
+    result = cv2.bitwise_and(image, image, mask=mask)
+    result = cv2.cvtColor(result, cv2.COLOR_BGR2HSV)
+    
 
-        print(grouping[i][1])
+    for group in grouping[1:]:
+        pixels = np.array(group[1])
 
+        maxXLeft = pixels[:,0].min()
+        maxXRight = pixels[:,0].max()
+        maxYTop = pixels[:,1].min()
+        maxYBottom = pixels[:,1].max()
 
-        for j in range(len(grouping[i][1])):
-            if grouping[i][1][j][0] > maxXRight:
-                maxXRight = grouping[i][1][j][0]
-            if grouping[i][1][j][0] < maxXLeft:
-                maxXLeft = grouping[i][1][j][0]
-            if grouping[i][1][j][1] > maxYBottom:
-                maxYBottom = grouping[i][1][j][1]
-            if grouping[i][1][j][1] < maxYTop:
-                maxYTop = grouping[i][1][j][1]
-
-        print(maxXLeft, maxXRight, maxYTop, maxYBottom)
-        cv2.rectangle(result, (maxXLeft, maxYTop), (maxXRight, maxYBottom), (0,255,0), 2)
-
-        # maxYBottom, maxXLeft
-        # maxYTop, maxXRight
         x, y = maxYBottom, maxXLeft
         x2, y2 = maxYTop, maxXRight
 
-        cv2.circle(result, (x, y), 2, (0, 255, 0), -1)
-        cv2.circle(result, (x2, y2), 2, (0, 255, 0), -1)
-
         cv2.rectangle(image_og, (x, y), (x2, y2), (0,255,0), 2)
+        dotCoord = (int((x-x2)/2+x2),y2)
+        cv2.circle(image_og_2, dotCoord, 2, (0, 255, 0),-1)
 
-        cv2.imwrite(f'{noteName}_filtered.jpeg', image_og)
+    cv2.imwrite(f'{noteName}_rect.jpeg', image_og)
+    cv2.imwrite(f'{noteName}_dot.jpeg', image_og_2)
+    return dotCoord
+        
 
-filterImage('testImages161', 'png')
+def getDistance(xReal, yReal, verticalPixelHeight, horizontalPixelWidth, tagHeight):
+    x = xReal-horizontalPixelWidth/2
+    y=verticalPixelHeight/2 -yReal
+
+    diagonalFOV=(120)*(math.pi/180)
+    f = math.sqrt(horizontalPixelWidth*horizontalPixelWidth+verticalPixelHeight*verticalPixelHeight)/(2*(math.tan(diagonalFOV/2)))
+    # 587.4786864517579
+    mountHeight=12
+    mountAngle=(0)*(math.pi/180)
+
+    VertAngle = mountAngle+math.atan(y/f)
+    yDist = (tagHeight-mountHeight)/math.tan(VertAngle)
+    xDist = ((tagHeight-mountHeight)/math.sin(VertAngle))*x/(math.sqrt(f*f+y*y))
+    return(xDist,yDist)
+
+start_time = time.time()
+arr = filterImage('testImages5', 'png')
+print(getDistance(arr[0], arr[1], 640, 480, 0))
+end_time = time.time()
+
+print(f"Processing time: {end_time - start_time} seconds")
 
         
