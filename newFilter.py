@@ -28,27 +28,23 @@ def filterImage(noteName, dot):
         [[0,0], [[0,0]]]
     ]
 
-    print(result[254,291])
 
     non_zero_pixels = np.transpose(np.nonzero(result[:,:,0]))
-    print(non_zero_pixels)
+    # print(non_zero_pixels)
 
-    kValue = 5
+    kValue = 20
     createGrouping = True
+    dFactor = 2
     for pixel in non_zero_pixels:
         i, j = pixel
         # print(result[i,j])
-        if (result[i,j][2] > 200 and result[i,j][0] < 20):
-            if createGrouping or len(grouping) == 0 or not ((np.abs(grouping[-1][0][0] - i) < kValue) or (np.abs(grouping[-1][0][1] - j) < kValue)):
+        if result[i,j][1] < 100 or  createGrouping or len(grouping) == 0 or not ((np.abs(grouping[-1][0][0] - i) < kValue) or (np.abs(grouping[-1][0][1] - j) < kValue)):
                 grouping.append([pixel, [pixel.tolist()]])
                 createGrouping = False
-            else:
-                grouping[-1][1].append(pixel.tolist())
-                print([int((grouping[-1][0][0] + i) / 2), int((grouping[-1][0][1] + j) / 2)])
-                grouping[-1][0] = [int((grouping[-1][0][0] + i) / 2), int((grouping[-1][0][1] + j) / 2)]
         else:
-            print("createGrouping = True")
-            createGrouping = True
+                grouping[-1][1].append(pixel.tolist())
+                # print([int((grouping[-1][0][0] + i) / 2), int((grouping[-1][0][1] + j) / 2)])
+                grouping[-1][0] = [int((grouping[-1][0][0] + i) / dFactor), int((grouping[-1][0][1] + j) / dFactor)]
     
     upper = np.array([100,100,256])  # FIXME: tune for different cameras, should be good for the ultrawdie one
     lower = np.array([0, 0, 100]) # FIXME: tune for different cameras, should be good for the ultrawdie one
@@ -56,7 +52,7 @@ def filterImage(noteName, dot):
     result = cv2.bitwise_and(image, image, mask=mask)
     result = cv2.cvtColor(result, cv2.COLOR_BGR2HSV)
     
-
+    coords = []
     for group in grouping[1:]:
         pixels = np.array(group[1])
 
@@ -71,15 +67,17 @@ def filterImage(noteName, dot):
         # print ratio between h and w
         print("ratio x/y", abs((x2-x) / (y2-y)))
         print("ratio y/x", abs((y2-y) / (x2-x)))
-        if abs((x2-x) / (y2-y)) < 12 and abs((y2-y) / (x2-x)) < 2:
-        # if True:
+        # if abs((x2-x) / (y2-y)) < 12 and abs((y2-y) / (x2-x)) < 2:
+        if True:
             cv2.rectangle(image_og, (x, y), (x2, y2), (0,255,0), 2)
             dotCoord = (int((x-x2)/2+x2),y2)
             cv2.circle(image_og_2, dotCoord, 2, (0, 255, 0),-1)
+            print(f"dotCoord: {dotCoord}")
+            coords.append(dotCoord)
 
     cv2.imwrite(f'{noteName}_rect.jpeg', image_og)
     cv2.imwrite(f'{noteName}_dot.jpeg', image_og_2)
-    # return dotCoord
+    return coords
         
 
 def getDistance(xReal, yReal, verticalPixelHeight, horizontalPixelWidth, tagHeight):
@@ -100,7 +98,11 @@ def getDistance(xReal, yReal, verticalPixelHeight, horizontalPixelWidth, tagHeig
 
 start_time = time.time()
 arr = filterImage('testImages1000', 'png')
+print(arr)
 # print(getDistance(arr[0], arr[1], 640, 480, 0))
+for i in arr:
+    print(getDistance(i[0], i[1], 480, 640, 0))
+
 end_time = time.time()
 
 print(f"Processing time: {end_time - start_time} seconds")
